@@ -310,7 +310,7 @@ public class ElectricSignActivity extends Activity
     
    private static String LOG_TAG = "ElectricSign";
     
-   private long _nextUpdateTime = 0;
+   private long _nextUpdateTime       = 0;
    private long _wifiShouldWorkAtTime = 0;
     
    private static final String ALARM_REFRESH_ACTION = "com.sugoi.electricsign.ALARM_REFRESH_ACTION";
