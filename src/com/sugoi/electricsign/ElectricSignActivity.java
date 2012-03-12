@@ -115,6 +115,27 @@ public class ElectricSignActivity extends Activity implements TextWatcher
     		 }
     		 topArea.addView(freqLine);
     		 
+    		 LinearLayout betweenLine = new LinearLayout(this);
+    		 {
+    		    _enableBetweenSetting = new CheckBox(this);
+    		    _enableBetweenSetting.setText("From");
+       		    _enableBetweenSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {updateGUI();}});
+    		    betweenLine.addView(_enableBetweenSetting);
+    		    
+    		    _betweenStartSetting = new Spinner(this);
+    		    _betweenStartSetting.setAdapter(new HourArrayAdapter(this));
+    		    betweenLine.addView(_betweenStartSetting);
+
+    		    TextView andText = new TextView(this);
+    		    andText.setText(" to ");
+    		    betweenLine.addView(andText);
+ 
+    		    _betweenEndSetting = new Spinner(this);
+    		    _betweenEndSetting.setAdapter(new HourArrayAdapter(this));
+    		    betweenLine.addView(_betweenEndSetting);
+    		 }
+    		 topArea.addView(betweenLine);
+    		 
     		 _allowSleepSetting = new CheckBox(this);
     		 _allowSleepSetting.setText("Allow device to sleep between updates");
     		 topArea.addView(_allowSleepSetting);
@@ -287,8 +308,19 @@ public class ElectricSignActivity extends Activity implements TextWatcher
             _displayingSign = true;
          }
 
-         Log.d(ElectricSignActivity.LOG_TAG, "Sign update complete, turning off Wifi and going to sleep for "+_freqCountSetting.getSelectedItem().toString()+" "+_freqUnitsSetting.getSelectedItem().toString().toLowerCase()+".");
-         _nextUpdateTime = scheduleReload(_reloadIntervalMillis);
+     	 String desc;
+     	 long reloadIntervalMillis = adjustIntervalToFitTimeWindow(_reloadIntervalMillis);
+     	 long reloadIntervalMinutes = reloadIntervalMillis / (60*1000);
+     	 if (reloadIntervalMinutes >= 60)
+     	 {
+     		 desc = Long.toString(reloadIntervalMinutes/60)+" hour(s)";
+     		 reloadIntervalMinutes = reloadIntervalMinutes%60;
+     		 if (reloadIntervalMinutes > 0) desc = desc + ", "+reloadIntervalMinutes+" minute(s)";
+     	 }
+     	 else desc = Long.toString(reloadIntervalMinutes)+" minute(s)";
+     		 
+         Log.d(ElectricSignActivity.LOG_TAG, "Sign update complete, turning off Wifi and going to sleep for "+desc+".");
+     	 _nextUpdateTime = scheduleReload(reloadIntervalMillis);
 
          if (isSleepAllowed())
          {
@@ -298,6 +330,51 @@ public class ElectricSignActivity extends Activity implements TextWatcher
         	 _wifiShouldWorkAtTime = 0;    // note that we're not waiting for Wifi to start up anymore
          }
       }
+   }
+   
+   private long adjustIntervalToFitTimeWindow(long delayMillis)
+   {
+	   if (_enableBetweenSetting.isChecked()) 
+	   {
+		   // Now, check out where we'll be at the specified time, and if it's not in the window,
+		   // start trying subsequence tops-of-hours until we find the next one that is in the window.
+		   Calendar calendar = Calendar.getInstance();
+		   calendar.setTimeInMillis(System.currentTimeMillis()+delayMillis);
+		   if (isInBetweenWindow(calendar)) return delayMillis;  // no adjustment necessary, we'll be landing inside the window anyway
+	   
+		   // If we got here, our target time is outside the between-window.  As a first step, move the target to the top of the next hour.
+		   calendar.set(Calendar.MINUTE, 0);
+		   calendar.set(Calendar.SECOND, 0);
+		   calendar.set(Calendar.MILLISECOND, 0);
+		   calendar.add(Calendar.HOUR_OF_DAY, 1);  // necessary to avoid any chance of the above truncation putting us back into the end of the old window
+	   
+		   // Now iterate over the next 24 tops-of-hours, and find the first one that gets us into our window again.
+		   for (int i=0; i<24; i++)
+		   {
+			   if (isInBetweenWindow(calendar)) return calendar.getTimeInMillis()-System.currentTimeMillis();
+			                               else calendar.add(Calendar.HOUR_OF_DAY, 1);
+		   }
+		   Log.e(ElectricSignActivity.LOG_TAG, "adjustIntervalToFitTimeWindow("+delayMillis+") failed!  ");
+	   }
+       return delayMillis;   // default is no adjustment
+   }
+   
+   private boolean isInBetweenWindow(Calendar calendar)
+   {
+	   int startHour = _betweenStartSetting.getSelectedItemPosition();  // 0-23
+	   int endHour   = _betweenEndSetting.getSelectedItemPosition();    // 0-23
+	   if (startHour == endHour) return true;   // e.g. between 5AM and 5AM is interpreted as "all the time"
+	   if (endHour == 0) endHour += 24;  // special case
+	   
+       int calHour = calendar.get(Calendar.HOUR_OF_DAY);
+       if (startHour < endHour)
+       {
+    	   return ((calHour >= startHour)&&(calHour < endHour));   // the intuitive case
+       }
+       else
+       {
+    	   return ((calHour >= startHour)&&(calHour < (endHour+24)));  // the "wraparound midnight" case
+       }
    }
     
    public void doReload() 
@@ -358,7 +435,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    {
       Calendar calendar = Calendar.getInstance();
       calendar.setTimeInMillis(System.currentTimeMillis());
-      calendar.add(Calendar.MILLISECOND, (int)millis);
+      calendar.add(Calendar.SECOND, (int)(millis/1000));
+      calendar.add(Calendar.MILLISECOND, (int)(millis%1000));  // done separately like this to avoid integer overflow in the 30-day case
       long wakeupTime = calendar.getTimeInMillis();
       _alarmManager.set(AlarmManager.RTC_WAKEUP, wakeupTime, _pendingIntent);
       return wakeupTime;
@@ -408,7 +486,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
       }
        
       _completeTimeMillis = (int)((System.nanoTime()-startTime)/1000000);        
-      Log.d(ElectricSignActivity.LOG_TAG, "Download of ["+downloadUrl+"] took "+_completeTimeMillis+"milliSeconds, downloaded "+buf.length()+" bytes.");            
+      Log.d(ElectricSignActivity.LOG_TAG, "Download of ["+downloadUrl+"] took "+_completeTimeMillis+" milliSeconds, downloaded "+buf.length()+" bytes.");            
       return buf.toString();
    }
     
@@ -488,8 +566,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   _enableLinkReplaceSetting.setChecked(s.getBoolean("enablelinkreplace",    false));
 	   _linkSetting.setText(                s.getString( "statuslink",           "$ES_STATUS"));
        _enableSelfStartSetting.setChecked(  s.getBoolean("selfstart",            false));
+       _enableBetweenSetting.setChecked(    s.getBoolean("enablebetween",        false));
        setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "6");
        setSpinnerSettingWithDefault(_freqUnitsSetting, s.getString("units", ""), "Minute(s)");
+       setSpinnerSettingWithDefault(_betweenStartSetting, s.getString("betweenstart", ""), "6 AM");
+       setSpinnerSettingWithDefault(_betweenEndSetting,   s.getString("betweenend",   ""), "9 PM");
    }
    
    private void saveSettings()
@@ -505,6 +586,9 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   e.putString("freq",              _freqCountSetting.getSelectedItem().toString());
 	   e.putString("units",             _freqUnitsSetting.getSelectedItem().toString());
 	   e.putBoolean("selfstart",        _enableSelfStartSetting.isChecked());
+       e.putBoolean("enablebetween",    _enableBetweenSetting.isChecked());
+	   e.putString("betweenstart",      _betweenStartSetting.getSelectedItem().toString());
+	   e.putString("betweenend",        _betweenEndSetting.getSelectedItem().toString());
 	   e.commit();
    }
    
@@ -538,6 +622,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    
    private void updateGUI()
    {
+	   //_betweenStartSetting.setEnabled(_enableBetweenSetting.isChecked());
+	   //_betweenEndSetting.setEnabled(_enableBetweenSetting.isChecked());
 	   _goButton.setEnabled(areAllSettingsValid());
 	   _linkLine.setVisibility(_includeStatusTextSetting.isChecked() ? View.VISIBLE : View.INVISIBLE);
 	   _linkSetting.setEnabled(_enableLinkReplaceSetting.isChecked());
@@ -627,6 +713,31 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   private final String _freqUnits[] = {"Minute(s)", "Hour(s)", "Day(s)"};
    };
    
+   private class HourArrayAdapter extends ArrayAdapter<String> {
+	   public HourArrayAdapter(Context ctxt) {super(ctxt, -1);}
+   	
+	   public String getItem(int position) {return _hours[position];}
+	   public int getCount() {return _hours.length;}
+	   public int getPosition(String s)
+	   {
+	      for (int i=getCount()-1; i>=0; i--) if (s.equalsIgnoreCase(getItem(i))) return i;
+	      return -1;
+	   }
+
+	   public View getView(int position, View convertView, ViewGroup parent)
+	   {	    
+		    if (convertView==null) convertView = new TextView(ElectricSignActivity.this);
+		    TextView tv = (TextView) convertView; 
+		    tv.setText(getItem(position));
+		    tv.setTextColor(Color.BLACK);
+		    return convertView;
+	   }
+	   public View getDropDownView(int position, View convertView, ViewGroup parent) {return getView(position, convertView, parent);}
+
+	   private final String _hours[] = {"Midnight", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM",
+			                                "Noon", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"};
+   };
+   
    //private String _url = "http://sites.google.com/site/parkwoodannounce/announcements";
    private long _reloadIntervalMillis;
    private AlarmManager _alarmManager;
@@ -661,6 +772,9 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    private CheckBox _enableLinkReplaceSetting;
    private EditText _linkSetting;
    private CheckBox _enableSelfStartSetting;
+   private CheckBox _enableBetweenSetting;
+   private Spinner  _betweenStartSetting;
+   private Spinner  _betweenEndSetting;
    
    private Button _goButton;
    private int _selfStartCount = 15;
