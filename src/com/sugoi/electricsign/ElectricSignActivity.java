@@ -19,6 +19,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
@@ -30,24 +31,75 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebView;
 import android.webkit.WebView.PictureListener;
+import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
 
 public class ElectricSignActivity extends Activity 
 {
    public void onCreate(Bundle savedInstanceState) 
    {
       super.onCreate(savedInstanceState);
-        
+
       Log.i(ElectricSignActivity.LOG_TAG, "Parkwood HOA Announcements starting up!");
       requestWindowFeature(Window.FEATURE_NO_TITLE);  // might as well save some space
 
+      LinearLayout linLayout = new LinearLayout(this);
+
+      // Set up the settings view (that comes up at launch)
+      _settingsView = new RelativeLayout(this);
+      {
+ 		 TextView title = new TextView(this);
+ 		 title.setText("Electric Sign Settings");
+ 		 title.setGravity(Gravity.CENTER);
+ 		 title.setTextSize(28);
+ 		 
+    	 RelativeLayout.LayoutParams tlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
+    	 tlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+    	 tlp.addRule(RelativeLayout.CENTER_HORIZONTAL);
+    	 _settingsView.addView(title, tlp);
+ 	 
+ 		 LinearLayout topArea = new LinearLayout(this);
+    	 topArea.setOrientation(LinearLayout.VERTICAL);
+    	 {
+    		 _allowSleepSetting = new CheckBox(this);
+    		 _allowSleepSetting.setText("Put device to sleep between updates");
+    		 topArea.addView(_allowSleepSetting);
+         
+    		 _writeScreenSaverSetting = new CheckBox(this);
+    		 _writeScreenSaverSetting.setText("Write screenshots to screen-saver");
+    		 topArea.addView(_writeScreenSaverSetting);
+    	 }
+    	 
+    	 RelativeLayout.LayoutParams mlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
+    	 mlp.addRule(RelativeLayout.CENTER_IN_PARENT);
+    	 _settingsView.addView(topArea, mlp);
+    	 
+    	 _goButton = new Button(this);
+    	 _goButton.setText("Start Display");
+    	 _goButton.setOnClickListener(new View.OnClickListener() {
+    		 public void onClick(View v) {
+    			 ElectricSignActivity.this.startDisplay();
+    		 }
+    	 });
+    	     	 
+    	 RelativeLayout.LayoutParams blp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
+    	 blp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+    	 blp.addRule(RelativeLayout.CENTER_HORIZONTAL);
+    	 _settingsView.addView(_goButton, blp);
+      }
+      linLayout.addView(_settingsView);
+      
       // Set up registration for alarm events (we use these so that we'll get them even if the Nook is asleep at the time)
       _alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
       Intent intent = new Intent(ALARM_REFRESH_ACTION);
@@ -68,21 +120,26 @@ public class ElectricSignActivity extends Activity
       _width = displaymetrics.widthPixels;
       _height = displaymetrics.heightPixels;
         
-      LinearLayout linLayout = new LinearLayout(this);
-
-      _webview = new WebView(this);
-      _webview.setPictureListener(new PictureListener() {
+      _webView = new WebView(this);
+      _webView.setPictureListener(new PictureListener() {
          public void onNewPicture(WebView view, Picture picture) {
-            if (picture != null) SaveScreenshotToScreensaversFolder(picture);
+            if (picture != null) saveScreenshotToScreensaversFolder(picture);
          }
       });
+      _webView.setVisibility(View.GONE);  // we'll make the web view visible when the settings view is dismissed
         
-      linLayout.addView(_webview, new LinearLayout.LayoutParams(_width, LayoutParams.FILL_PARENT));
+      linLayout.addView(_webView, new LinearLayout.LayoutParams(_width, LayoutParams.FILL_PARENT));
       _contentView = linLayout;
       setContentView(_contentView);
-        
-      // This will prevent the screen-saver from kicking in, which would defeat our purpose
+
       getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+      loadSettings();      
+   }
+   
+   public void startDisplay() {
+	  saveSettings();
+      _settingsView.setVisibility(View.GONE);
+      _webView.setVisibility(View.VISIBLE);
       _nextUpdateTime = scheduleReload(0);  // schedule a download for ASAP
    }
     
@@ -116,7 +173,7 @@ public class ElectricSignActivity extends Activity
          if (html.length() > 0) 
          {
             Log.d(ElectricSignActivity.LOG_TAG, "Updating sign display at "+ dateTimeStr + " ("+html.length()+" characters)");
-            _webview.loadDataWithBaseURL(_url, html, "text/html", "utf-8", null);
+            _webView.loadDataWithBaseURL(_url, html, "text/html", "utf-8", null);
             _displayingSign = true;
          }
 
@@ -143,7 +200,7 @@ public class ElectricSignActivity extends Activity
              
             if (worked) statusStr = "Turning on WiFi, please wait one minute... "+attStr;
                    else statusStr = "Error enabling WiFi!  "+attStr;            
-            _webview.loadDataWithBaseURL("dummy", statusStr, "text/html", "utf-8", null);
+            _webView.loadDataWithBaseURL("dummy", statusStr, "text/html", "utf-8", null);
          }
          if (worked) Log.d(ElectricSignActivity.LOG_TAG, "Turning on Wifi:  Will wait 45 seconds for the Wifi to wake up and connect to the AP...  "+attStr);
                 else Log.d(ElectricSignActivity.LOG_TAG, "Error enabling Wifi, will try again soon!  "+attStr);
@@ -250,12 +307,16 @@ public class ElectricSignActivity extends Activity
 
    public boolean dispatchTouchEvent(MotionEvent e)
    {
-      Log.d(ElectricSignActivity.LOG_TAG, "Screen touched, exiting!");
-      finish();
-      return true;
+	  if (_webView.getVisibility() == View.VISIBLE)
+	  {
+         Log.d(ElectricSignActivity.LOG_TAG, "Screen touched, exiting!");
+         finish();
+         return true;
+	  }
+	  else return super.dispatchTouchEvent(e);      
    }
    
-   private void SaveScreenshotToScreensaversFolder(Picture p)
+   private void saveScreenshotToScreensaversFolder(Picture p)
    {
       Bitmap b = Bitmap.createBitmap(_width, _height, Config.ARGB_8888); 
       Canvas c = new Canvas(b); 
@@ -292,6 +353,25 @@ public class ElectricSignActivity extends Activity
          e.printStackTrace();
       }
    }
+    
+   public void loadSettings() 
+   {
+	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
+	   System.out.println("RESTORE!"+s.toString());
+       _allowSleepSetting.setChecked(      s.getBoolean("allowSleep", true));
+       _writeScreenSaverSetting.setChecked(s.getBoolean("writeScreenSaver", true));
+   }
+   
+   private void saveSettings()
+   {
+	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
+	   SharedPreferences.Editor e = s.edit();
+	   e.putBoolean("allowSleep",       _allowSleepSetting.isChecked());     
+	   e.putBoolean("writeScreenSaver", _writeScreenSaverSetting.isChecked());
+	   e.commit();
+	   System.out.println("Save!"+s.toString());
+	}
+   
    
    private String _url = "http://sites.google.com/site/parkwoodannounce/announcements";
    private long _reloadIntervalHours = 6;
@@ -299,19 +379,26 @@ public class ElectricSignActivity extends Activity
    private AlarmManager _alarmManager;
    private BroadcastReceiver _alarmReceiver;
    private PendingIntent _pendingIntent;
-
+   
    private View _contentView;
-   private WebView _webview;
+   private RelativeLayout _settingsView;
+   private WebView _webView;
    private boolean _displayingSign = false;
    private int _wifiAttemptNumber = 0;
    private int _completeTimeMillis = 0;
    private int _width;
    private int _height;
     
-   private static String LOG_TAG = "ElectricSign";
-    
+   private static final String LOG_TAG    = "ElectricSign";
+   private static final String PREFS_NAME = "ElectricSignPrefs";
+
    private long _nextUpdateTime       = 0;
    private long _wifiShouldWorkAtTime = 0;
     
    private static final String ALARM_REFRESH_ACTION = "com.sugoi.electricsign.ALARM_REFRESH_ACTION";
+   
+   private CheckBox _allowSleepSetting;
+   private CheckBox _writeScreenSaverSetting;
+   
+   private Button _goButton;
 }
