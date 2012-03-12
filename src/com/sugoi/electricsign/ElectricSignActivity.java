@@ -23,29 +23,37 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Picture;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.URLUtil;
 import android.webkit.WebView;
 import android.webkit.WebView.PictureListener;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
 import android.widget.RelativeLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 
-public class ElectricSignActivity extends Activity 
+public class ElectricSignActivity extends Activity implements TextWatcher
 {
    public void onCreate(Bundle savedInstanceState) 
    {
@@ -72,6 +80,35 @@ public class ElectricSignActivity extends Activity
  		 LinearLayout topArea = new LinearLayout(this);
     	 topArea.setOrientation(LinearLayout.VERTICAL);
     	 {
+    		 LinearLayout urlLine = new LinearLayout(this);
+    		 {
+    		    TextView urlText = new TextView(this);
+    		    urlText.setText("Load: ");
+    		    urlLine.addView(urlText);
+    		    
+    		    _urlSetting = new EditText(this);
+    		    _urlSetting.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_URI);
+    		    _urlSetting.addTextChangedListener(this);
+    		    urlLine.addView(_urlSetting, new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT));
+    		 }
+    		 topArea.addView(urlLine);
+    		 
+    		 LinearLayout freqLine = new LinearLayout(this);
+    		 {
+    		    TextView everyText = new TextView(this);
+    		    everyText.setText("Every ");
+    		    freqLine.addView(everyText);
+    		    
+    		    _freqCountSetting = new Spinner(this);
+    		    _freqCountSetting.setAdapter(new FreqCountArrayAdapter(this));
+    		    freqLine.addView(_freqCountSetting);
+    		    
+    		    _freqUnitsSetting = new Spinner(this);
+    		    _freqUnitsSetting.setAdapter(new FreqUnitsArrayAdapter(this));
+    		    freqLine.addView(_freqUnitsSetting);
+    		 }
+    		 topArea.addView(freqLine);
+    		 
     		 _allowSleepSetting = new CheckBox(this);
     		 _allowSleepSetting.setText("Put device to sleep between updates");
     		 topArea.addView(_allowSleepSetting);
@@ -85,18 +122,35 @@ public class ElectricSignActivity extends Activity
     	 mlp.addRule(RelativeLayout.CENTER_IN_PARENT);
     	 _settingsView.addView(topArea, mlp);
     	 
-    	 _goButton = new Button(this);
-    	 _goButton.setText("Start Display");
-    	 _goButton.setOnClickListener(new View.OnClickListener() {
-    		 public void onClick(View v) {
-    			 ElectricSignActivity.this.startDisplay();
-    		 }
-    	 });
+    	 RelativeLayout botArea = new RelativeLayout(this);
+    	 {  		
+    	    _goButton = new Button(this);
+    	    _goButton.setText("Start Display");
+    	    _goButton.setOnClickListener(new View.OnClickListener() {
+    		    public void onClick(View v) {
+    			    ElectricSignActivity.this.startDisplay();
+    		    }
+    	    });
+    	    RelativeLayout.LayoutParams gop = new RelativeLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+       	    gop.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
+    	    botArea.addView(_goButton, gop);
+    	    
+       	    Button cancelButton = new Button(this);
+    	    cancelButton.setText("Cancel");
+    	    cancelButton.setOnClickListener(new View.OnClickListener() {
+    		    public void onClick(View v) {
+    			    ElectricSignActivity.this.finish();
+    		    }
+    	    });
+    	    RelativeLayout.LayoutParams cop = new RelativeLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+       	    cop.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+    	    botArea.addView(cancelButton, cop);
+    	 }
     	     	 
     	 RelativeLayout.LayoutParams blp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
     	 blp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
     	 blp.addRule(RelativeLayout.CENTER_HORIZONTAL);
-    	 _settingsView.addView(_goButton, blp);
+    	 _settingsView.addView(botArea, blp);
       }
       linLayout.addView(_settingsView);
       
@@ -106,7 +160,7 @@ public class ElectricSignActivity extends Activity
       _pendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
       _alarmReceiver = new BroadcastReceiver() {
          public void onReceive(Context context, Intent intent) {
-            setKeepScreenAwake(true);  // necessary to make sure the Nook doesn't go back to sleep as soon as this method returns!
+            if (isSleepAllowed()) setKeepScreenAwake(true);  // necessary to make sure the Nook doesn't go back to sleep as soon as this method returns!
             doReload();
          }
       };
@@ -133,22 +187,32 @@ public class ElectricSignActivity extends Activity
       setContentView(_contentView);
 
       getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-      loadSettings();      
+      loadSettings();
    }
+   
+   public void afterTextChanged(Editable s)
+   {
+	   _urlSetting.setBackgroundColor(isUrlValid() ? Color.WHITE : Color.RED);
+	   updateGoButtonEnabled();
+   }
+   public void beforeTextChanged(CharSequence s, int start, int count, int after) {/* empty */}
+   public void onTextChanged(CharSequence s, int start, int before, int count) {/*empty */}
    
    public void startDisplay() {
 	  saveSettings();
+	  
+	  long freqCount = Long.parseLong(_freqCountSetting.getSelectedItem().toString());
+	  long millisBase = 1000;  
+	  String unit = _freqUnitsSetting.getSelectedItem().toString().toLowerCase();
+	       if (unit.contains("min"))  millisBase *= 60;
+	  else if (unit.contains("hour")) millisBase *= (60*60);
+	  else if (unit.contains("day"))  millisBase *= (24*60*60);
+	  _reloadIntervalMillis = freqCount * millisBase; 
+	  
       _settingsView.setVisibility(View.GONE);
       _webView.setVisibility(View.VISIBLE);
       _nextUpdateTime = scheduleReload(0);  // schedule a download for ASAP
-   }
-    
-   public void onResume() {
-      super.onResume();
-   }
-    
-   public void onPause() {
-      super.onPause();
+      if (isSleepAllowed() == false) setKeepScreenAwake(true);
    }
     
    public void onDestroy() {
@@ -173,23 +237,27 @@ public class ElectricSignActivity extends Activity
          if (html.length() > 0) 
          {
             Log.d(ElectricSignActivity.LOG_TAG, "Updating sign display at "+ dateTimeStr + " ("+html.length()+" characters)");
-            _webView.loadDataWithBaseURL(_url, html, "text/html", "utf-8", null);
+            _webView.loadDataWithBaseURL(getUrl(), html, "text/html", "utf-8", null);
             _displayingSign = true;
          }
 
-         Log.d(ElectricSignActivity.LOG_TAG, "Sign update complete, turning off Wifi and going to sleep for "+_reloadIntervalHours+" hours.");
-         WifiManager wifi = (WifiManager) ElectricSignActivity.this.getSystemService(Context.WIFI_SERVICE);              
-         wifi.setWifiEnabled(false);   // disable wifi between refreshes, to save power
-         _wifiShouldWorkAtTime = 0;    // note that we're not waiting for Wifi to start up anymore
-         _nextUpdateTime = scheduleReload(_reloadIntervalHours*60*60*1000);  // convert hours to milliseconds  
-         setKeepScreenAwake(false);    // back to sleep until next time!        
+         Log.d(ElectricSignActivity.LOG_TAG, "Sign update complete, turning off Wifi and going to sleep for "+_freqCountSetting.getSelectedItem().toString()+" "+_freqUnitsSetting.getSelectedItem().toString().toLowerCase()+".");
+         _nextUpdateTime = scheduleReload(_reloadIntervalMillis);
+
+         if (isSleepAllowed())
+         {
+        	 WifiManager wifi = (WifiManager) ElectricSignActivity.this.getSystemService(Context.WIFI_SERVICE);              
+        	 wifi.setWifiEnabled(false);   // disable wifi between refreshes, to save power
+        	 setKeepScreenAwake(false);    // back to sleep until next time!   
+        	 _wifiShouldWorkAtTime = 0;    // note that we're not waiting for Wifi to start up anymore
+         }
       }
    }
     
    public void doReload() 
    {
       WifiManager wifi = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
-      if (wifi.isWifiEnabled() == false)
+      if ((isSleepAllowed())&&(wifi.isWifiEnabled() == false))
       {
          _wifiAttemptNumber++;
          String attStr = "(attempt #"+_wifiAttemptNumber+")";
@@ -222,7 +290,7 @@ public class ElectricSignActivity extends Activity
          else
          {
             // Do the download in a separate thread, to avoid visits from the ANR if the network is slow
-            new DownloadFileTask().execute(_url);
+            new DownloadFileTask().execute(getUrl());
          }
       }
    }
@@ -318,6 +386,8 @@ public class ElectricSignActivity extends Activity
    
    private void saveScreenshotToScreensaversFolder(Picture p)
    {
+	  if (_writeScreenSaverSetting.isChecked() == false) return;
+	  
       Bitmap b = Bitmap.createBitmap(_width, _height, Config.ARGB_8888); 
       Canvas c = new Canvas(b); 
       try { 
@@ -354,28 +424,121 @@ public class ElectricSignActivity extends Activity
       }
    }
     
-   public void loadSettings() 
+   private void loadSettings() 
    {
 	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
-	   System.out.println("RESTORE!"+s.toString());
-       _allowSleepSetting.setChecked(      s.getBoolean("allowSleep", true));
+	   _allowSleepSetting.setChecked(      s.getBoolean("allowSleep", true));
        _writeScreenSaverSetting.setChecked(s.getBoolean("writeScreenSaver", true));
+       _urlSetting.setText(                s.getString("url", "http://sites.google.com/"));
+       
+       setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "6");
+       setSpinnerSettingWithDefault(_freqUnitsSetting, s.getString("units", ""), "Minute(s)");
+   }
+   
+   private void setSpinnerSettingWithDefault(Spinner spinner, String val, String defVal)
+   {
+       ArrayAdapter<String> a = (ArrayAdapter<String>) spinner.getAdapter(); //cast to an ArrayAdapter
+       int pos = a.getPosition(val);
+       if (pos < 0) pos = a.getPosition(defVal);
+       if (pos >= 0) spinner.setSelection(pos);
    }
    
    private void saveSettings()
    {
 	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
 	   SharedPreferences.Editor e = s.edit();
-	   e.putBoolean("allowSleep",       _allowSleepSetting.isChecked());     
-	   e.putBoolean("writeScreenSaver", _writeScreenSaverSetting.isChecked());
+	   e.putBoolean("allowSleep",       isSleepAllowed());     
+	   e.putBoolean("writeScreenSaver", isWriteScreenSaverFileAllowed());
+	   e.putString("url",               _urlSetting.getText().toString());  // not using getUrl() because I don't want auto-correct here
+	   e.putString("freq",              _freqCountSetting.getSelectedItem().toString());
+	   e.putString("units",             _freqUnitsSetting.getSelectedItem().toString());
 	   e.commit();
-	   System.out.println("Save!"+s.toString());
-	}
+   }
    
+   private String getUrl()
+   {
+      String ret = _urlSetting.getText().toString();
+      if (URLUtil.isValidUrl(ret) == false) ret = "http://"+ret;
+      return ret;
+   } 
    
-   private String _url = "http://sites.google.com/site/parkwoodannounce/announcements";
-   private long _reloadIntervalHours = 6;
+   private boolean isSleepAllowed()
+   {
+      return _allowSleepSetting.isChecked();
+   }
+   
+   private boolean isWriteScreenSaverFileAllowed()
+   {
+	   return _writeScreenSaverSetting.isChecked();
+   }
+   
+   private boolean areAllSettingsValid()
+   {
+	  return isUrlValid();   // the only criterion for now
+   }
+   
+   private boolean isUrlValid()
+   {
+      String url = _urlSetting.getText().toString();   // not using getUrl() becaues I don't want auto-correct here
+      return ((url.length() > 0)&&((URLUtil.isValidUrl(url))||URLUtil.isValidUrl("http://"+url)));
+   }
+   
+   private void updateGoButtonEnabled()
+   {
+	   _goButton.setEnabled(areAllSettingsValid());
+   }
+    
+   private class FreqCountArrayAdapter extends ArrayAdapter<String> {
+	   public FreqCountArrayAdapter(Context ctxt) {super(ctxt, -1);}
+   	
+	   public String getItem(int position) {return Integer.toString(_freqVals[position]);}
+	   public int getCount() {return _freqVals.length;}
+	   public int getPosition(String s)
+	   {
+	      for (int i=getCount()-1; i>=0; i--) if (s.equalsIgnoreCase(getItem(i))) return i;
+	      return -1;
+	   }
+	   
+	   public View getView(int position, View convertView, ViewGroup parent)
+	   {	    
+		    if (convertView==null) convertView = new TextView(ElectricSignActivity.this);
+		    TextView tv = (TextView) convertView; 
+		    tv.setText(getItem(position));
+		    tv.setTextColor(Color.BLACK);
+		    return convertView;
+	   }
+	   
+	   public View getDropDownView(int position, View convertView, ViewGroup parent) {return getView(position, convertView, parent);}
 
+	   private final int _freqVals[] = {1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 30};
+   };
+
+   private class FreqUnitsArrayAdapter extends ArrayAdapter<String> {
+	   public FreqUnitsArrayAdapter(Context ctxt) {super(ctxt, -1);}
+   	
+	   public String getItem(int position) {return _freqUnits[position];}
+	   public int getCount() {return _freqUnits.length;}
+	   public int getPosition(String s)
+	   {
+	      for (int i=getCount()-1; i>=0; i--) if (s.equalsIgnoreCase(getItem(i))) return i;
+	      return -1;
+	   }
+
+	   public View getView(int position, View convertView, ViewGroup parent)
+	   {	    
+		    if (convertView==null) convertView = new TextView(ElectricSignActivity.this);
+		    TextView tv = (TextView) convertView; 
+		    tv.setText(getItem(position));
+		    tv.setTextColor(Color.BLACK);
+		    return convertView;
+	   }
+	   public View getDropDownView(int position, View convertView, ViewGroup parent) {return getView(position, convertView, parent);}
+
+	   private final String _freqUnits[] = {"Minute(s)", "Hour(s)", "Day(s)"};
+   };
+   
+   //private String _url = "http://sites.google.com/site/parkwoodannounce/announcements";
+   private long _reloadIntervalMillis;
    private AlarmManager _alarmManager;
    private BroadcastReceiver _alarmReceiver;
    private PendingIntent _pendingIntent;
@@ -396,9 +559,12 @@ public class ElectricSignActivity extends Activity
    private long _wifiShouldWorkAtTime = 0;
     
    private static final String ALARM_REFRESH_ACTION = "com.sugoi.electricsign.ALARM_REFRESH_ACTION";
-   
+  
+   private EditText _urlSetting;
    private CheckBox _allowSleepSetting;
    private CheckBox _writeScreenSaverSetting;
+   private Spinner  _freqCountSetting;
+   private Spinner  _freqUnitsSetting;
    
    private Button _goButton;
 }
