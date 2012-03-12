@@ -12,6 +12,7 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 
+import android.R.bool;
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -28,9 +29,12 @@ import android.graphics.Picture;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -46,6 +50,8 @@ import android.webkit.WebView.PictureListener;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.LinearLayout.LayoutParams;
@@ -59,7 +65,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    {
       super.onCreate(savedInstanceState);
 
-      Log.i(ElectricSignActivity.LOG_TAG, "Parkwood HOA Announcements starting up!");
+      Log.i(ElectricSignActivity.LOG_TAG, "Electric Sign starting up!");
       requestWindowFeature(Window.FEATURE_NO_TITLE);  // might as well save some space
 
       LinearLayout linLayout = new LinearLayout(this);
@@ -110,12 +116,36 @@ public class ElectricSignActivity extends Activity implements TextWatcher
     		 topArea.addView(freqLine);
     		 
     		 _allowSleepSetting = new CheckBox(this);
-    		 _allowSleepSetting.setText("Put device to sleep between updates");
+    		 _allowSleepSetting.setText("Allow device to sleep between updates");
     		 topArea.addView(_allowSleepSetting);
          
     		 _writeScreenSaverSetting = new CheckBox(this);
-    		 _writeScreenSaverSetting.setText("Write screenshots to screen-saver");
+    		 _writeScreenSaverSetting.setText("Write screenshots to screen-saver file");
     		 topArea.addView(_writeScreenSaverSetting);
+
+    		 _enableSelfStartSetting = new CheckBox(this);
+    		 updateSelfStartText();
+    		 _enableSelfStartSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {setSelfStartEnabled(c);}});
+    		 topArea.addView(_enableSelfStartSetting);
+
+    		 _includeStatusTextSetting = new CheckBox(this);
+    		 _includeStatusTextSetting.setText("Include status text in display");
+    		 _includeStatusTextSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {updateGUI();}});
+    		 topArea.addView(_includeStatusTextSetting);
+    		 
+    		 _linkLine = new LinearLayout(this);
+    		 {   
+     		    _enableLinkReplaceSetting = new CheckBox(this);
+     		    _enableLinkReplaceSetting.setText("Replace links labelled");
+     		    _enableLinkReplaceSetting.setEllipsize(TextUtils.TruncateAt.END);
+       		    _enableLinkReplaceSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {updateGUI();}});
+     		    _linkLine.addView(_enableLinkReplaceSetting);
+
+    		    _linkSetting = new EditText(this);
+    		    _linkSetting.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+    		    _linkLine.addView(_linkSetting, new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT));
+    		 }
+    		 topArea.addView(_linkLine);
     	 }
     	 
     	 RelativeLayout.LayoutParams mlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
@@ -193,7 +223,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    public void afterTextChanged(Editable s)
    {
 	   _urlSetting.setBackgroundColor(isUrlValid() ? Color.WHITE : Color.RED);
-	   updateGoButtonEnabled();
+	   updateGUI();
    }
    public void beforeTextChanged(CharSequence s, int start, int count, int after) {/* empty */}
    public void onTextChanged(CharSequence s, int start, int before, int count) {/*empty */}
@@ -222,7 +252,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
       
    private class DownloadFileTask extends AsyncTask<String,Void,String>
    {
-      protected String doInBackground(String... url) {return ElectricSignActivity.this.downloadHTML(url[0]);}
+      protected String doInBackground(String... url) {return downloadHTML(url[0]);}
 
       protected void onPostExecute(String html) 
       {
@@ -232,9 +262,25 @@ public class ElectricSignActivity extends Activity implements TextWatcher
          int bp = (int)(100.0*getBatteryRemainingPercent());
          if (bp >= 0) battPercent = ", "+bp+"%";
 
-         String dateTimeStr = getDateTime();
-         html = html.replace(">parkwood</a>", ">Current as of "+dateTimeStr+" ("+_completeTimeMillis+"mS"+battPercent+")</a>");
-         if (html.length() > 0) 
+     	 String dateTimeStr = getDateTime();
+     	 if (_includeStatusTextSetting.isChecked())
+     	 {
+     		String baseStr = "Current as of "+dateTimeStr+" ("+_completeTimeMillis+"mS"+battPercent+")";
+        	if (_enableLinkReplaceSetting.isChecked())
+        	{
+                String linkStr = _linkSetting.getText().toString().trim();
+       	       	String replaceWith = ">"+baseStr+"</a>";
+       	        html = html.replace(">"+linkStr+"</a>", replaceWith);
+       	        html = html.replace(">"+linkStr+"</A>", replaceWith);
+        	}
+        	else
+        	{
+        		html = html.replace("<body>", "<body>"+baseStr+"<p>");
+        		html = html.replace("<BODY>", "<body>"+baseStr+"<p>");
+        	}
+     	 }
+        
+     	 if (html.length() > 0) 
          {
             Log.d(ElectricSignActivity.LOG_TAG, "Updating sign display at "+ dateTimeStr + " ("+html.length()+" characters)");
             _webView.loadDataWithBaseURL(getUrl(), html, "text/html", "utf-8", null);
@@ -423,17 +469,6 @@ public class ElectricSignActivity extends Activity implements TextWatcher
          e.printStackTrace();
       }
    }
-    
-   private void loadSettings() 
-   {
-	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
-	   _allowSleepSetting.setChecked(      s.getBoolean("allowSleep", true));
-       _writeScreenSaverSetting.setChecked(s.getBoolean("writeScreenSaver", true));
-       _urlSetting.setText(                s.getString("url", "http://sites.google.com/"));
-       
-       setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "6");
-       setSpinnerSettingWithDefault(_freqUnitsSetting, s.getString("units", ""), "Minute(s)");
-   }
    
    private void setSpinnerSettingWithDefault(Spinner spinner, String val, String defVal)
    {
@@ -443,6 +478,20 @@ public class ElectricSignActivity extends Activity implements TextWatcher
        if (pos >= 0) spinner.setSelection(pos);
    }
    
+   private void loadSettings() 
+   {
+	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
+	   _allowSleepSetting.setChecked(       s.getBoolean("allowSleep",           true));
+       _writeScreenSaverSetting.setChecked( s.getBoolean("writeScreenSaver",     true));
+       _urlSetting.setText(                 s.getString( "url",                  "http://sites.google.com/"));
+	   _includeStatusTextSetting.setChecked(s.getBoolean("includestatustext",    false));
+	   _enableLinkReplaceSetting.setChecked(s.getBoolean("enablelinkreplace",    false));
+	   _linkSetting.setText(                s.getString( "statuslink",           "$ES_STATUS"));
+       _enableSelfStartSetting.setChecked(  s.getBoolean("selfstart",            false));
+       setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "6");
+       setSpinnerSettingWithDefault(_freqUnitsSetting, s.getString("units", ""), "Minute(s)");
+   }
+   
    private void saveSettings()
    {
 	   SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
@@ -450,8 +499,12 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   e.putBoolean("allowSleep",       isSleepAllowed());     
 	   e.putBoolean("writeScreenSaver", isWriteScreenSaverFileAllowed());
 	   e.putString("url",               _urlSetting.getText().toString());  // not using getUrl() because I don't want auto-correct here
+	   e.putBoolean("includestatustext",_includeStatusTextSetting.isChecked());
+	   e.putBoolean("enablelinkreplace",_enableLinkReplaceSetting.isChecked());
+	   e.putString("statuslink",        _linkSetting.getText().toString());
 	   e.putString("freq",              _freqCountSetting.getSelectedItem().toString());
 	   e.putString("units",             _freqUnitsSetting.getSelectedItem().toString());
+	   e.putBoolean("selfstart",        _enableSelfStartSetting.isChecked());
 	   e.commit();
    }
    
@@ -483,11 +536,48 @@ public class ElectricSignActivity extends Activity implements TextWatcher
       return ((url.length() > 0)&&((URLUtil.isValidUrl(url))||URLUtil.isValidUrl("http://"+url)));
    }
    
-   private void updateGoButtonEnabled()
+   private void updateGUI()
    {
 	   _goButton.setEnabled(areAllSettingsValid());
+	   _linkLine.setVisibility(_includeStatusTextSetting.isChecked() ? View.VISIBLE : View.INVISIBLE);
+	   _linkSetting.setEnabled(_enableLinkReplaceSetting.isChecked());
    }
-    
+   
+   private void updateSelfStartText()
+   {
+      _enableSelfStartSetting.setText("Auto-Start Display in " + _selfStartCount+" seconds.");
+   }
+   
+   private void setSelfStartEnabled(boolean c)
+   {
+	   _selfStartCount = 15;
+	   updateSelfStartText();
+	   scheduleSelfStartTick();
+   }
+   
+   private void doSelfStartTick()
+   {
+	   if ((_settingsView.getVisibility() == View.VISIBLE)&&(_enableSelfStartSetting.isChecked()))
+	   {
+		   if (--_selfStartCount <= 0) startDisplay();
+		   else
+		   {
+		      updateSelfStartText();
+		      scheduleSelfStartTick();
+		   }
+	   }
+   }	 
+   
+   private void scheduleSelfStartTick()
+   {
+      Handler h = new Handler() {
+    	  public void handleMessage(Message msg) {  
+    	      doSelfStartTick();  
+    	 }  
+      };
+      h.sendMessageDelayed(h.obtainMessage(), 1000);
+   }
+
    private class FreqCountArrayAdapter extends ArrayAdapter<String> {
 	   public FreqCountArrayAdapter(Context ctxt) {super(ctxt, -1);}
    	
@@ -510,7 +600,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   
 	   public View getDropDownView(int position, View convertView, ViewGroup parent) {return getView(position, convertView, parent);}
 
-	   private final int _freqVals[] = {1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 30};
+	   private final int _freqVals[] = {1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 30};
    };
 
    private class FreqUnitsArrayAdapter extends ArrayAdapter<String> {
@@ -546,6 +636,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    private View _contentView;
    private RelativeLayout _settingsView;
    private WebView _webView;
+   private LinearLayout _linkLine;
+   
    private boolean _displayingSign = false;
    private int _wifiAttemptNumber = 0;
    private int _completeTimeMillis = 0;
@@ -565,6 +657,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    private CheckBox _writeScreenSaverSetting;
    private Spinner  _freqCountSetting;
    private Spinner  _freqUnitsSetting;
+   private CheckBox _includeStatusTextSetting;
+   private CheckBox _enableLinkReplaceSetting;
+   private EditText _linkSetting;
+   private CheckBox _enableSelfStartSetting;
    
    private Button _goButton;
+   private int _selfStartCount = 15;
 }
