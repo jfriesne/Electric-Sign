@@ -242,10 +242,19 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 
 		for (int i=0; i<2; i++)
 		{
+			_webViewDownloadErrorTimeStamps[i] = 0;
 			WebView w = _webViews[i] = new WebView(this);
 			w.setPictureListener(new PictureListener() {
 				public void onNewPicture(WebView view, Picture picture) {
-		        	 if (picture != null) saveScreenshotToScreensaversFolder(picture);
+					 long ts;
+					      if (view == _webViews[0]) ts = _webViewDownloadErrorTimeStamps[0];
+					 else if (view == _webViews[1]) ts = _webViewDownloadErrorTimeStamps[1];
+					 else
+					 {
+						 Log.e(LOG_TAG, "Unknown webView in picture listener!?");
+						 return;
+					 }
+		        	 if ((picture != null)&&((System.currentTimeMillis()-ts) > 60*1000)) saveScreenshotToScreensaversFolder(picture);
 		         }
 		    });
 		    w.setHorizontalScrollBarEnabled(false);
@@ -254,11 +263,14 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			w.setWebViewClient(new WebViewClient() {
 				public void onPageFinished(WebView view, String url) {
 					super.onPageFinished(view,  url);
-					if (view == getAlternateWebView()) pageFinishedLoading(true);
+					if (view == getAlternateWebView()) pageFinishedLoading();
 				}
 				public void onReceivedError (WebView view, int errorCode, String description, String failingUrl) {
 					super.onReceivedError(view, errorCode, description, failingUrl);
-					if (view == getAlternateWebView()) pageFinishedLoading(false);
+					System.out.println("Page download error detected: errorCode="+errorCode+", desc=["+description+"], url=["+failingUrl+"]");
+					_downloadErrorCount++;
+					     if (view == _webViews[0]) _webViewDownloadErrorTimeStamps[0] = System.currentTimeMillis();
+					else if (view == _webViews[1]) _webViewDownloadErrorTimeStamps[1] = System.currentTimeMillis();
 				}
 			});
 			linLayout.addView(w, new LinearLayout.LayoutParams(_width, LayoutParams.FILL_PARENT));
@@ -271,9 +283,9 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		loadSettings();
 	}
 
-	private void pageFinishedLoading(boolean success)
+	private void pageFinishedLoading()
 	{
-		if (success)
+		if (_downloadErrorCount == 0)
 		{
 			getCurrentWebView().setVisibility(View.GONE);
 			_currentWebView = (_currentWebView==1)?0:1;  // swap the double buffer!
@@ -289,6 +301,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			}
 			_displayingSign = true;
 		}
+		_downloadErrorCount = 0;  // a clean slate for next time
 
 		String desc;
 		long reloadIntervalMillis = adjustIntervalToFitTimeWindow(_reloadIntervalMillis);
@@ -814,4 +827,6 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 
 	private Button _goButton;
 	private int _selfStartCount = 15;
+	private int _downloadErrorCount = 0;
+	private long _webViewDownloadErrorTimeStamps[] = new long[2];
 }
