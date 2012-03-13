@@ -66,6 +66,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		Log.i(LOG_TAG, "Electric Sign starting up!");
 		requestWindowFeature(Window.FEATURE_NO_TITLE);  // might as well save some space
 
+		DisplayMetrics displaymetrics = new DisplayMetrics();
+		getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
+		_width = displaymetrics.widthPixels;
+		_height = displaymetrics.heightPixels;
+
 		LinearLayout linLayout = new LinearLayout(this);
 		linLayout.setOrientation(LinearLayout.VERTICAL);
 
@@ -75,7 +80,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			TextView title = new TextView(this);
 			title.setText("Electric Sign Settings");
 			title.setGravity(Gravity.CENTER);
-			title.setTextSize(48);
+			title.setTextSize((_width>=600)?48:24);
 
 			RelativeLayout.LayoutParams tlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
 			tlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
@@ -210,7 +215,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		}
 		
 		LinearLayout.LayoutParams settingsLayout = new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.FILL_PARENT);
-        settingsLayout.setMargins(30, 30, 30, 30);
+        int m = (_width >= 600) ? 30 : 10;
+		settingsLayout.setMargins(m, m, m, m);
 		linLayout.addView(_settingsView, settingsLayout);
 
 		// Set up registration for alarm events (we use these so that we'll get them even if the Nook is asleep at the time)
@@ -227,11 +233,6 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		// We register dataReceiver to listen ALARM_REFRESH_ACTION
 		IntentFilter filter = new IntentFilter(ALARM_REFRESH_ACTION);
 		registerReceiver(_alarmReceiver, filter);
-
-		DisplayMetrics displaymetrics = new DisplayMetrics();
-		getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
-		_width = displaymetrics.widthPixels;
-		_height = displaymetrics.heightPixels;
 
 		_statusText = new TextView(this);
 		_statusText.setGravity(Gravity.CENTER);
@@ -447,8 +448,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	
 	private void addSpacing(LinearLayout toView)
 	{
-		TextView dummy = new TextView(this);
-		toView.addView(dummy);
+		if (_width >= 600)
+		{
+		   TextView dummy = new TextView(this);
+		   toView.addView(dummy);
+		}
 	}
 
 	private WebView getCurrentWebView()
@@ -735,9 +739,9 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		{
 			if (convertView==null) convertView = new TextView(ElectricSignActivity.this);
 			TextView tv = (TextView) convertView;
-			int p = isDropDown ? 8 : 1;
+			int p = ((_width>=600)&&(isDropDown)) ? 8 : 1;
 			tv.setPadding(p,p,p,p);
-			tv.setTextSize(24);
+			if (_width >= 600) tv.setTextSize(24);
 			tv.setText(text);
 			tv.setTextColor(Color.BLACK);
 			return convertView;
@@ -783,8 +787,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			return -1;
 		}
 
-		private final String _hours[] = {"Midnight", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM",
-				                         "Noon",     "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"};
+		private final String _hours[] = {"12AM", "1 AM", "2 AM", "3 AM", "4 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM",
+				                         "Noon", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM"};
 	};
 
 	//private String _url = "http://sites.google.com/site/parkwoodannounce/announcements";
