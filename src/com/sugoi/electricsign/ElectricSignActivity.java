@@ -284,8 +284,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			{
 				String battPercent = "";
 				int bp = (int)(100.0*getBatteryRemainingPercent());
-				if (bp >= 0) battPercent = ", "+bp+"%";
-				_statusText.setText("Current as of "+dateTimeStr+" ("+_completeTimeMillis+"mS"+battPercent+")");
+				if (bp >= 0) battPercent = " (Battery at "+bp+"%)";
+				_statusText.setText("Current as of "+dateTimeStr+battPercent);
 			}
 			_displayingSign = true;
 		}
@@ -515,8 +515,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			buf = new StringBuffer();
 		}
 
-		_completeTimeMillis = (int)((System.nanoTime()-startTime)/1000000);        
-		Log.d(LOG_TAG, "Download of ["+downloadUrl+"] took "+_completeTimeMillis+" milliSeconds, downloaded "+buf.length()+" bytes.");            
+		long completeTimeMillis = (int)((System.nanoTime()-startTime)/1000000);        
+		Log.d(LOG_TAG, "Download of ["+downloadUrl+"] took "+completeTimeMillis+" milliSeconds, downloaded "+buf.length()+" bytes.");            
 		return buf.toString();
 	}
 
@@ -789,7 +789,6 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 
 	private boolean _displayingSign = false;
 	private int _wifiAttemptNumber = 0;
-	private int _completeTimeMillis = 0;
 	private int _width;
 	private int _height;
 
