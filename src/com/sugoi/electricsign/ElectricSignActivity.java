@@ -139,34 +139,33 @@ public class ElectricSignActivity extends Activity implements TextWatcher
     		 _allowSleepSetting = new CheckBox(this);
     		 _allowSleepSetting.setText("Allow device to sleep between updates");
     		 topArea.addView(_allowSleepSetting);
-         
-    		 _writeScreenSaverSetting = new CheckBox(this);
-    		 _writeScreenSaverSetting.setText("Write screenshots to screen-saver file");
-    		 topArea.addView(_writeScreenSaverSetting);
-
-    		 _enableSelfStartSetting = new CheckBox(this);
-    		 updateSelfStartText();
-    		 _enableSelfStartSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {setSelfStartEnabled(c);}});
-    		 topArea.addView(_enableSelfStartSetting);
 
     		 _includeStatusTextSetting = new CheckBox(this);
     		 _includeStatusTextSetting.setText("Include status text in display");
     		 _includeStatusTextSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {updateGUI();}});
     		 topArea.addView(_includeStatusTextSetting);
     		 
-    		 _linkLine = new LinearLayout(this);
-    		 {   
-     		    _enableLinkReplaceSetting = new CheckBox(this);
-     		    _enableLinkReplaceSetting.setText("Replace links labelled");
-     		    _enableLinkReplaceSetting.setEllipsize(TextUtils.TruncateAt.END);
-       		    _enableLinkReplaceSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {updateGUI();}});
-     		    _linkLine.addView(_enableLinkReplaceSetting);
+    		 _enableSelfStartSetting = new CheckBox(this);
+    		 updateSelfStartText();
+    		 _enableSelfStartSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {setSelfStartEnabled(c);}});
+    		 topArea.addView(_enableSelfStartSetting);
 
-    		    _linkSetting = new EditText(this);
-    		    _linkSetting.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
-    		    _linkLine.addView(_linkSetting, new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT));
+    		 _writeScreenSaverSetting = new CheckBox(this);
+    		 _writeScreenSaverSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {updateGUI();}});
+    		 _writeScreenSaverSetting.setText("Write screenshots to screen-saver file");
+    		 topArea.addView(_writeScreenSaverSetting);
+
+    		 _filePathLine = new LinearLayout(this);
+    		 {   
+     		    TextView fpLabel = new TextView(this);
+     		    fpLabel.setText("File: ");
+     		    _filePathLine.addView(fpLabel);
+
+    		    _filePathSetting = new EditText(this);
+    		    _filePathSetting.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+    		    _filePathLine.addView(_filePathSetting, new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT));
     		 }
-    		 topArea.addView(_linkLine);
+    		 topArea.addView(_filePathLine);
     	 }
     	 
     	 RelativeLayout.LayoutParams mlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
@@ -284,12 +283,14 @@ public class ElectricSignActivity extends Activity implements TextWatcher
          if (bp >= 0) battPercent = ", "+bp+"%";
 
      	 String dateTimeStr = getDateTime();
+     	 
+     	 /* TODO REWRITE THIS
      	 if (_includeStatusTextSetting.isChecked())
      	 {
      		String baseStr = "Current as of "+dateTimeStr+" ("+_completeTimeMillis+"mS"+battPercent+")";
         	if (_enableLinkReplaceSetting.isChecked())
         	{
-                String linkStr = _linkSetting.getText().toString().trim();
+                String linkStr = _filePathSetting.getText().toString().trim();
        	       	String replaceWith = ">"+baseStr+"</a>";
        	        html = html.replace(">"+linkStr+"</a>", replaceWith);
        	        html = html.replace(">"+linkStr+"</A>", replaceWith);
@@ -300,6 +301,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
         		html = html.replace("<BODY>", "<body>"+baseStr+"<p>");
         	}
      	 }
+         */
         
      	 if (html.length() > 0) 
          {
@@ -522,9 +524,12 @@ public class ElectricSignActivity extends Activity implements TextWatcher
       } 
         
       // Create the necessary directory, if it isn't already there
-      String screenshotDir = "/media/screensavers/ElectricSign";
+      String filePath = _filePathSetting.getText().toString();
+      String dirPath = filePath;
+      int lastSlash = dirPath.lastIndexOf('/');
+      if (lastSlash >= 0) dirPath = dirPath.substring(0, lastSlash);
       try {
-         File f = new File(screenshotDir);
+         File f = new File(dirPath);
          f.mkdir();
       }
       catch(Exception e) {
@@ -532,17 +537,13 @@ public class ElectricSignActivity extends Activity implements TextWatcher
       }
  
       // Then create the file in the directory
-      String fileName = screenshotDir;
-      if (fileName.endsWith("/") == false) fileName = fileName + "/";
-      fileName = fileName + "ElectricSignContents.png";
-
-      File imageFile = new File(fileName);
+      File imageFile = new File(filePath);
       try {
          OutputStream fout = new FileOutputStream(imageFile);
          b.compress(Bitmap.CompressFormat.PNG, 100, fout);
          fout.flush();
          fout.close();
-         Log.d(ElectricSignActivity.LOG_TAG, "Updated screenshot file "+fileName);
+         Log.d(ElectricSignActivity.LOG_TAG, "Updated screenshot file "+filePath);
       } catch (Exception e) {
          e.printStackTrace();
       }
@@ -563,8 +564,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
        _writeScreenSaverSetting.setChecked( s.getBoolean("writeScreenSaver",     true));
        _urlSetting.setText(                 s.getString( "url",                  "http://sites.google.com/"));
 	   _includeStatusTextSetting.setChecked(s.getBoolean("includestatustext",    false));
-	   _enableLinkReplaceSetting.setChecked(s.getBoolean("enablelinkreplace",    false));
-	   _linkSetting.setText(                s.getString( "statuslink",           "$ES_STATUS"));
+	   _filePathSetting.setText(            s.getString( "filepath",             "/media/screensavers/ElectricSign/Sign.png"));
        _enableSelfStartSetting.setChecked(  s.getBoolean("selfstart",            false));
        _enableBetweenSetting.setChecked(    s.getBoolean("enablebetween",        false));
        setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "6");
@@ -581,8 +581,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   e.putBoolean("writeScreenSaver", isWriteScreenSaverFileAllowed());
 	   e.putString("url",               _urlSetting.getText().toString());  // not using getUrl() because I don't want auto-correct here
 	   e.putBoolean("includestatustext",_includeStatusTextSetting.isChecked());
-	   e.putBoolean("enablelinkreplace",_enableLinkReplaceSetting.isChecked());
-	   e.putString("statuslink",        _linkSetting.getText().toString());
+	   e.putString("filepath",          _filePathSetting.getText().toString());
 	   e.putString("freq",              _freqCountSetting.getSelectedItem().toString());
 	   e.putString("units",             _freqUnitsSetting.getSelectedItem().toString());
 	   e.putBoolean("selfstart",        _enableSelfStartSetting.isChecked());
@@ -625,8 +624,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	   //_betweenStartSetting.setEnabled(_enableBetweenSetting.isChecked());
 	   //_betweenEndSetting.setEnabled(_enableBetweenSetting.isChecked());
 	   _goButton.setEnabled(areAllSettingsValid());
-	   _linkLine.setVisibility(_includeStatusTextSetting.isChecked() ? View.VISIBLE : View.INVISIBLE);
-	   _linkSetting.setEnabled(_enableLinkReplaceSetting.isChecked());
+	   _filePathLine.setVisibility(_writeScreenSaverSetting.isChecked() ? View.VISIBLE : View.INVISIBLE);
    }
    
    private void updateSelfStartText()
@@ -747,7 +745,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    private View _contentView;
    private RelativeLayout _settingsView;
    private WebView _webView;
-   private LinearLayout _linkLine;
+   private LinearLayout _filePathLine;
    
    private boolean _displayingSign = false;
    private int _wifiAttemptNumber = 0;
@@ -769,8 +767,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
    private Spinner  _freqCountSetting;
    private Spinner  _freqUnitsSetting;
    private CheckBox _includeStatusTextSetting;
-   private CheckBox _enableLinkReplaceSetting;
-   private EditText _linkSetting;
+   private EditText _filePathSetting;
    private CheckBox _enableSelfStartSetting;
    private CheckBox _enableBetweenSetting;
    private Spinner  _betweenStartSetting;
