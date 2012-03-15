@@ -25,6 +25,8 @@ import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Picture;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -70,6 +72,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		getWindowManager().getDefaultDisplay().getMetrics(displaymetrics);
 		_width = displaymetrics.widthPixels;
 		_height = displaymetrics.heightPixels;
+		//System.out.println("_width="+_width+", height="+_height);
 
 		LinearLayout linLayout = new LinearLayout(this);
 		linLayout.setOrientation(LinearLayout.VERTICAL);
@@ -77,16 +80,19 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		// Set up the settings view (that comes up at launch)
 		_settingsView = new RelativeLayout(this);
 		{
-			TextView title = new TextView(this);
-			title.setText("Electric Sign Settings");
-			title.setGravity(Gravity.CENTER);
-			title.setTextSize((_width>=600)?48:24);
-
-			RelativeLayout.LayoutParams tlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
-			tlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-			tlp.addRule(RelativeLayout.CENTER_HORIZONTAL);
-			_settingsView.addView(title, tlp);
-
+			if (_height >= 400)
+			{
+				TextView title = new TextView(this);
+				title.setText("Electric Sign Settings");
+				title.setGravity(Gravity.CENTER);
+				title.setTextSize((_width>=600)?48:24);
+				
+				RelativeLayout.LayoutParams tlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
+				tlp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+				tlp.addRule(RelativeLayout.CENTER_HORIZONTAL);
+				_settingsView.addView(title, tlp);
+			}
+			
 			LinearLayout topArea = new LinearLayout(this);
 			topArea.setOrientation(LinearLayout.VERTICAL);
 			{
@@ -180,7 +186,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			}
 
 			RelativeLayout.LayoutParams mlp = new RelativeLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.WRAP_CONTENT);
-			mlp.addRule(RelativeLayout.CENTER_IN_PARENT);
+			mlp.addRule((_height>=400)?RelativeLayout.CENTER_IN_PARENT:RelativeLayout.ALIGN_PARENT_TOP);
 			_settingsView.addView(topArea, mlp);
 
 			RelativeLayout botArea = new RelativeLayout(this);
@@ -215,8 +221,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		}
 		
 		LinearLayout.LayoutParams settingsLayout = new LinearLayout.LayoutParams(LayoutParams.FILL_PARENT, LayoutParams.FILL_PARENT);
-        int m = (_width >= 600) ? 30 : 10;
-		settingsLayout.setMargins(m, m, m, m);
+        int m = (_width >= 600) ? 30 : ((_width >= 300) ? 10 : 0);
+        settingsLayout.setMargins(m, m, m, m);
 		linLayout.addView(_settingsView, settingsLayout);
 
 		// Set up registration for alarm events (we use these so that we'll get them even if the Nook is asleep at the time)
@@ -236,7 +242,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 
 		_statusText = new TextView(this);
 		_statusText.setGravity(Gravity.CENTER);
-		_statusText.setTextSize(16);
+		_statusText.setTextSize(12);
 		_statusText.setBackgroundColor(Color.WHITE);
 		_statusText.setTextColor(Color.BLACK);
 		linLayout.addView(_statusText);
@@ -298,7 +304,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				String battPercent = "";
 				int bp = (int)(100.0*getBatteryRemainingPercent());
 				if (bp >= 0) battPercent = " (Battery at "+bp+"%)";
-				_statusText.setText("Current as of "+dateTimeStr+battPercent);
+				_statusText.setText("Updated "+dateTimeStr+battPercent);
 			}
 			_displayingSign = true;
 		}
@@ -403,11 +409,22 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			return ((calHour >= startHour)&&(calHour < (endHour+24)));  // the "wraparound midnight" case
 		}
 	}
+	
+	private static boolean isConnectedToNetwork(Context context) 
+	{
+        ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = null;
+        if (connectivityManager != null) {
+            networkInfo = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+            if (!networkInfo.isAvailable()) networkInfo = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE);
+        }
+        return (networkInfo == null) ? false : networkInfo.isConnected();
+    }
 
 	public void doReload() 
 	{
 		WifiManager wifi = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
-		if ((isSleepAllowed())&&(wifi.isWifiEnabled() == false))
+		if ((isSleepAllowed())&&(isConnectedToNetwork(this) == false)&&(wifi.isWifiEnabled() == false))
 		{
 			_wifiAttemptNumber++;
 			String attStr = "(attempt #"+_wifiAttemptNumber+")";
@@ -629,7 +646,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
 		_allowSleepSetting.setChecked(       s.getBoolean("allowSleep",           true));
 		_writeScreenSaverSetting.setChecked( s.getBoolean("writeScreenSaver",     true));
-		_urlSetting.setText(                 s.getString( "url",                  "http://sites.google.com/"));
+		_urlSetting.setText(                 s.getString( "url",                  "http://news.google.com/"));
 		_includeStatusTextSetting.setChecked(s.getBoolean("includestatustext",    true));
 		_filePathSetting.setText(            s.getString( "filepath",             "/media/screensavers/ElectricSign/Sign.png"));
 		_enableSelfStartSetting.setChecked(  s.getBoolean("selfstart",            false));
