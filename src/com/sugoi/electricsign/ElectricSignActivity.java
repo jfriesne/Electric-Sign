@@ -20,6 +20,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
@@ -82,8 +85,18 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		{
 			if (_height >= 400)
 			{
+				String versionString = "";
+				PackageManager pm = getPackageManager();
+				try {
+					//---get the package info---
+					PackageInfo pi = pm.getPackageInfo("com.sugoi.electricsign", 0);
+					versionString = pi.versionName;
+				} catch (NameNotFoundException e) {
+					e.printStackTrace();
+				}
+
 				TextView title = new TextView(this);
-				title.setText("Electric Sign Settings");
+				title.setText("Electric Sign "+versionString);
 				title.setGravity(Gravity.CENTER);
 				title.setTextSize((_width>=600)?48:24);
 				
@@ -274,7 +287,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				}
 				public void onReceivedError (WebView view, int errorCode, String description, String failingUrl) {
 					super.onReceivedError(view, errorCode, description, failingUrl);
-					System.out.println("Page download error detected: errorCode="+errorCode+", desc=["+description+"], url=["+failingUrl+"]");
+					Log.e(LOG_TAG, "Page download error detected: errorCode="+errorCode+", desc=["+description+"], url=["+failingUrl+"]");
 					_downloadErrorCount++;
 					     if (view == _webViews[0]) _webViewDownloadErrorTimeStamps[0] = System.currentTimeMillis();
 					else if (view == _webViews[1]) _webViewDownloadErrorTimeStamps[1] = System.currentTimeMillis();
@@ -651,7 +664,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		_filePathSetting.setText(            s.getString( "filepath",             "/media/screensavers/ElectricSign/Sign.png"));
 		_enableSelfStartSetting.setChecked(  s.getBoolean("selfstart",            false));
 		_enableBetweenSetting.setChecked(    s.getBoolean("enablebetween",        false));
-		setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "6");
+		setSpinnerSettingWithDefault(_freqCountSetting, s.getString("freq",  ""), "5");
 		setSpinnerSettingWithDefault(_freqUnitsSetting, s.getString("units", ""), "Minute(s)");
 		setSpinnerSettingWithDefault(_betweenStartSetting, s.getString("betweenstart", ""), "6 AM");
 		setSpinnerSettingWithDefault(_betweenEndSetting,   s.getString("betweenend",   ""), "9 PM");
