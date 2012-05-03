@@ -3,8 +3,10 @@ package com.sugoi.electricsign;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.net.URL;
 import java.net.URLConnection;
 import java.text.DateFormat;
@@ -68,7 +70,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	{
 		super.onCreate(savedInstanceState);
 
-		Log.i(LOG_TAG, "Electric Sign starting up!");
+		DoLogInfo("Electric Sign starting up!");
 		requestWindowFeature(Window.FEATURE_NO_TITLE);  // might as well save some space
 
 		DisplayMetrics displaymetrics = new DisplayMetrics();
@@ -271,7 +273,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 					 else if (view == _webViews[1]) ts = _webViewDownloadErrorTimeStamps[1];
 					 else
 					 {
-						 Log.e(LOG_TAG, "Unknown webView in picture listener!?");
+						 DoLogError("Unknown webView in picture listener!?");
 						 return;
 					 }
 		        	 if ((picture != null)&&((System.currentTimeMillis()-ts) > 60*1000)) saveScreenshotToScreensaversFolder(picture);
@@ -287,7 +289,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				}
 				public void onReceivedError (WebView view, int errorCode, String description, String failingUrl) {
 					super.onReceivedError(view, errorCode, description, failingUrl);
-					Log.e(LOG_TAG, "Page download error detected: errorCode="+errorCode+", desc=["+description+"], url=["+failingUrl+"]");
+					DoLogError("Page download error detected: errorCode="+errorCode+", desc=["+description+"], url=["+failingUrl+"]");
 					_downloadErrorCount++;
 					     if (view == _webViews[0]) _webViewDownloadErrorTimeStamps[0] = System.currentTimeMillis();
 					else if (view == _webViews[1]) _webViewDownloadErrorTimeStamps[1] = System.currentTimeMillis();
@@ -338,13 +340,13 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 
 		if (isSleepAllowed())
 		{
-			Log.d(LOG_TAG, "Sign activity complete, turning off Wifi and going to sleep for "+desc+".");
+			DoLogDebug("Sign update complete, turning off Wifi and going to sleep for "+desc+".");
 			WifiManager wifi = (WifiManager) ElectricSignActivity.this.getSystemService(Context.WIFI_SERVICE);              
 			wifi.setWifiEnabled(false);   // disable wifi between refreshes, to save power
 			setKeepScreenAwake(false);    // back to sleep until next time!   
 			_wifiShouldWorkAtTime = 0;    // note that we're not waiting for Wifi to start up anymore
 		}
-		else Log.d(LOG_TAG, "Sign activity complete, next activity will occur in +"+desc+".");
+		else DoLogDebug("Sign update complete, next activity will occur in +"+desc+".");
 	}
 
 	public void afterTextChanged(Editable s)
@@ -400,7 +402,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				if (isInBetweenWindow(calendar)) return calendar.getTimeInMillis()-System.currentTimeMillis();
 				else calendar.add(Calendar.HOUR_OF_DAY, 1);
 			}
-			Log.e(LOG_TAG, "adjustIntervalToFitTimeWindow("+delayMillis+") failed!  ");
+			DoLogError("adjustIntervalToFitTimeWindow("+delayMillis+") failed!  ");
 		}
 		return delayMillis;   // default is no adjustment
 	}
@@ -450,8 +452,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				else statusStr = "Error enabling WiFi!  "+attStr;            
 				getCurrentWebView().loadDataWithBaseURL("dummy", statusStr, "text/html", "utf-8", null);
 			}
-			if (worked) Log.d(LOG_TAG, "Turning on Wifi:  Will wait 45 seconds for the Wifi to wake up and connect to the AP...  "+attStr);
-			else Log.d(LOG_TAG, "Error enabling Wifi, will try again soon!  "+attStr);
+			if (worked) DoLogDebug("Turning on Wifi:  Will wait 45 seconds for the Wifi to wake up and connect to the AP...  "+attStr);
+			       else DoLogDebug("Error enabling Wifi, will try again soon!  "+attStr);
 			_wifiShouldWorkAtTime = scheduleReload(45*1000);
 		}
 		else
@@ -459,12 +461,12 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			long now = System.currentTimeMillis();
 			if (now < _wifiShouldWorkAtTime)
 			{
-				Log.d(LOG_TAG, "Hmm, we got woken up a bit early, WiFi may not be available yet.  Back to sleep a bit longer...");
+				DoLogDebug("Hmm, we got woken up a bit early, WiFi may not be available yet.  Back to sleep a bit longer...");
 				scheduleReload(_wifiShouldWorkAtTime-now);
 			}
 			else if (now < _nextUpdateTime)
 			{
-				Log.d(LOG_TAG, "Hmm, we got woken up a bit early, it's not time for a display refresh yet.  Back to sleep a bit longer...");
+				DoLogDebug("Hmm, we got woken up a bit early, it's not time for a display refresh yet.  Back to sleep a bit longer...");
 				scheduleReload(_nextUpdateTime-now);
 			}
 			else
@@ -549,7 +551,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				buf.append(inputLine + "\r\n");
 				if ((System.nanoTime()-startTime) >= (((long)30000)*1000*1000))
 				{
-					Log.e(LOG_TAG, "HTML download is taking too long, giving up!");
+					DoLogError("HTML download is taking too long, giving up!");
 					buf = new StringBuffer();
 					break;
 				}
@@ -558,12 +560,12 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		}
 		catch(Exception e)
 		{
-			Log.e(LOG_TAG, "Exception caught for "+downloadUrl+", exception is: "+e.toString());
+			DoLogError("Exception caught for "+downloadUrl+", exception is: "+e.toString());
 			buf = new StringBuffer();
 		}
 
 		long completeTimeMillis = (int)((System.nanoTime()-startTime)/1000000);        
-		Log.d(LOG_TAG, "Download of ["+downloadUrl+"] took "+completeTimeMillis+" milliSeconds, downloaded "+buf.length()+" bytes.");            
+		DoLogDebug("Download of ["+downloadUrl+"] took "+completeTimeMillis+" milliSeconds, downloaded "+buf.length()+" bytes.");            
 		return buf.toString();
 	}
 
@@ -575,11 +577,18 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	}
 
 	public boolean dispatchTouchEvent(MotionEvent e)
-	{
+	{ 
 		if (_settingsView.getVisibility() != View.VISIBLE)
 		{
-			Log.d(LOG_TAG, "Screen touched, exiting!");
-			finish();
+			long now = System.currentTimeMillis();
+			if ((now-_prevScreenTouchTime) > 1000) _screenTouchCount = 0;  // don't count ancient touches
+			if (++_screenTouchCount == 3)
+			{
+			   DoLogDebug("Screen touched three times within one second, exiting!");
+			   finish();
+			}
+			else _prevScreenTouchTime = now;
+			
 			return true;
 		}
 		else return super.dispatchTouchEvent(e);      
@@ -640,7 +649,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			b.compress(Bitmap.CompressFormat.PNG, 100, fout);
 			fout.flush();
 			fout.close();
-			Log.d(LOG_TAG, "Updated screenshot file "+filePath);
+			DoLogDebug("Updated screenshot file "+filePath);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -758,6 +767,39 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		};
 		h.sendMessageDelayed(h.obtainMessage(), 1000);
 	}
+	
+	private void DoLogInfo(String s)
+	{
+	   Log.i(LOG_TAG, s);
+	   DoPrivateLog("I", s);
+	}
+	
+	private void DoLogDebug(String s)
+	{
+	   Log.d(LOG_TAG, s);
+	   DoPrivateLog("D", s);
+	}
+
+	private void DoLogError(String s)
+	{
+	   Log.e(LOG_TAG, s);
+	   DoPrivateLog("E", s);
+	}
+	
+	private void DoPrivateLog(String prefix, String s)
+	{
+	   try {
+	      if (_privateLogFile == null) _privateLogFile = new PrintWriter(new FileWriter("/media/electricsign.log"));
+		  _privateLogFile.println(prefix + " " + getDateTime() + " " + s);
+		  _privateLogFile.flush();
+	   }
+	   catch(Exception e)
+	   {
+		   Log.e(LOG_TAG, "Error, couldn't open private log file! "+e);
+		   System.out.println(e);
+		   e.printStackTrace();
+	   }
+	}
 
 	private abstract class SignSpinnerAdapter extends ArrayAdapter<String> {
 		public SignSpinnerAdapter(Context ctxt) {super(ctxt, -1);}
@@ -858,7 +900,10 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	private CheckBox _enableBetweenSetting;
 	private Spinner  _betweenStartSetting;
 	private Spinner  _betweenEndSetting;
-
+    private PrintWriter _privateLogFile = null;
+    private long _prevScreenTouchTime = 0;
+    private int _screenTouchCount = 0;
+    
 	private Button _goButton;
 	private int _selfStartCount = 15;
 	private int _downloadErrorCount = 0;
