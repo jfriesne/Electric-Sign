@@ -111,11 +111,6 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			LinearLayout topArea = new LinearLayout(this);
 			topArea.setOrientation(LinearLayout.VERTICAL);
 			{
-				_launchAtStartupSetting = new CheckBox(this);
-				_launchAtStartupSetting.setText("Auto-launch on boot");
-				topArea.addView(_launchAtStartupSetting);
-				addSpacing(topArea);
-
 				LinearLayout urlLine = new LinearLayout(this);
 				{
 					TextView urlText = new TextView(this);
@@ -180,6 +175,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 				topArea.addView(_includeStatusTextSetting);
 				addSpacing(topArea);
 
+				_launchAtStartupSetting = new CheckBox(this);
+				_launchAtStartupSetting.setText("Auto-launch on boot");
+				topArea.addView(_launchAtStartupSetting);
+				addSpacing(topArea);
+				
 				_enableSelfStartSetting = new CheckBox(this);
 				updateSelfStartText();
 				_enableSelfStartSetting.setOnCheckedChangeListener(new OnCheckedChangeListener() {public void onCheckedChanged(CompoundButton b, boolean c) {setSelfStartEnabled(c);}});
@@ -376,10 +376,10 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		// running overnight (with no stack trace, just gone)
 		Intent intent = new Intent(this, ElectricSignStartupIntentReceiver.class);
 		PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
-		if (isLaunchAtStartup()) 
+		if ((isLaunchAtStartup())&&(_enableSelfStartSetting.isChecked()))
 		{
 			DoLogInfo("Arming the 24-hour watchdog.");
-			_alarmManager.setRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), (30 * 1000), pendingIntent);
+			_alarmManager.setRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), (24*60*60*1000), pendingIntent);
 		}
 		else 
 		{
@@ -609,7 +609,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		{
 			long now = System.currentTimeMillis();
 			if ((now-_prevScreenTouchTime) > 1000) _screenTouchCount = 0;  // don't count ancient touches
-			if (++_screenTouchCount == 3)
+			if (++_screenTouchCount == (2*3))   // three presses and three releases
 			{
 			   DoLogDebug("Screen touched three times within one second, exiting!");
 			   finish();
