@@ -111,6 +111,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			LinearLayout topArea = new LinearLayout(this);
 			topArea.setOrientation(LinearLayout.VERTICAL);
 			{
+				_launchAtStartupSetting = new CheckBox(this);
+				_launchAtStartupSetting.setText("Auto-launch on boot");
+				topArea.addView(_launchAtStartupSetting);
+				addSpacing(topArea);
+
 				LinearLayout urlLine = new LinearLayout(this);
 				{
 					TextView urlText = new TextView(this);
@@ -304,11 +309,13 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		loadSettings();
 	}
-
+	
 	private void pageFinishedLoading()
 	{
 		if (_downloadErrorCount == 0)
 		{
+			_wifiAttemptNumber = 0; // success means resetting the counter
+
 			getCurrentWebView().setVisibility(View.GONE);
 			_currentWebView = (_currentWebView==1)?0:1;  // swap the double buffer!
 			getCurrentWebView().setVisibility(View.VISIBLE);
@@ -360,6 +367,26 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	public void startDisplay() {
 		saveSettings();
 
+		DoLogInfo("Starting sign display "+this+" in process #" + android.os.Process.myPid());
+		
+		// When the user has indicated that we're running on a dedicated device,
+		// also start a watchdog that will check once every 24 hours to see if
+		// ElectricSign is running, and restart it, if it isn't.  This works around
+		// an apparent bug where sometimes ElectricSign will mysteriously stop
+		// running overnight (with no stack trace, just gone)
+		Intent intent = new Intent(this, ElectricSignStartupIntentReceiver.class);
+		PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+		if (isLaunchAtStartup()) 
+		{
+			DoLogInfo("Arming the 24-hour watchdog.");
+			_alarmManager.setRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime(), (30 * 1000), pendingIntent);
+		}
+		else 
+		{
+			DoLogInfo("Disarming the 24-hour watchdog.");
+			_alarmManager.cancel(pendingIntent);
+		}
+		
 		long freqCount = Long.parseLong(_freqCountSetting.getSelectedItem().toString());
 		long millisBase = 1000;  
 		String unit = _freqUnitsSetting.getSelectedItem().toString().toLowerCase();
@@ -651,7 +678,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			fout.close();
 			DoLogDebug("Updated screenshot file "+filePath);
 		} catch (Exception e) {
-			e.printStackTrace();
+			DoLogError("Unable to save screenshot file "+filePath);
 		}
 	}
 	
@@ -666,6 +693,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	private void loadSettings() 
 	{
 		SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
+		_launchAtStartupSetting.setChecked(  s.getBoolean("launchAtStartup",      false));
 		_allowSleepSetting.setChecked(       s.getBoolean("allowSleep",           true));
 		_writeScreenSaverSetting.setChecked( s.getBoolean("writeScreenSaver",     true));
 		_urlSetting.setText(                 s.getString( "url",                  "http://news.google.com/"));
@@ -683,6 +711,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	{
 		SharedPreferences s = getSharedPreferences(PREFS_NAME, 0);
 		SharedPreferences.Editor e = s.edit();
+		e.putBoolean("launchAtStartup",  isLaunchAtStartup());
 		e.putBoolean("allowSleep",       isSleepAllowed());     
 		e.putBoolean("writeScreenSaver", isWriteScreenSaverFileAllowed());
 		e.putString("url",               _urlSetting.getText().toString());  // not using getUrl() because I don't want auto-correct here
@@ -703,6 +732,11 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 		if (URLUtil.isValidUrl(ret) == false) ret = "http://"+ret;
 		return ret;
 	} 
+
+	private boolean isLaunchAtStartup()
+	{
+		return _launchAtStartupSetting.isChecked();
+	}
 
 	private boolean isSleepAllowed()
 	{
@@ -789,9 +823,13 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	private void DoPrivateLog(String prefix, String s)
 	{
 	   try {
-	      if (_privateLogFile == null) _privateLogFile = new PrintWriter(new FileWriter("/media/electricsign.log"));
-		  _privateLogFile.println(prefix + " " + getDateTime() + " " + s);
-		  _privateLogFile.flush();
+		  final boolean _doPrivateLogging = false;  // disabled for now
+		  if (_doPrivateLogging)
+		  {
+	         if (_privateLogFile == null) _privateLogFile = new PrintWriter(new FileWriter("/media/electricsign.log"));
+		     _privateLogFile.println(prefix + " " + getDateTime() + " " + s);
+		     _privateLogFile.flush();
+		  }
 	   }
 	   catch(Exception e)
 	   {
@@ -881,8 +919,8 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	private int _width;
 	private int _height;
 
-	private static final String LOG_TAG    = "ElectricSign";
-	private static final String PREFS_NAME = "ElectricSignPrefs";
+	private static final String LOG_TAG   = "ElectricSign";
+	public static final String PREFS_NAME = "ElectricSignPrefs";
 
 	private long _nextUpdateTime       = 0;
 	private long _wifiShouldWorkAtTime = 0;
@@ -890,6 +928,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 	private static final String ALARM_REFRESH_ACTION = "com.sugoi.electricsign.ALARM_REFRESH_ACTION";
 
 	private EditText _urlSetting;
+	private CheckBox _launchAtStartupSetting;
 	private CheckBox _allowSleepSetting;
 	private CheckBox _writeScreenSaverSetting;
 	private Spinner  _freqCountSetting;
