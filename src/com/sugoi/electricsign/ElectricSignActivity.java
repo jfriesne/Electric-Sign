@@ -330,8 +330,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			}
 			_displayingSign = true;
 		}
-		_downloadErrorCount = 0;  // a clean slate for next time
-
+		
 		String desc;
 		long reloadIntervalMillis = adjustIntervalToFitTimeWindow(_reloadIntervalMillis);
 		long reloadIntervalMinutes = reloadIntervalMillis / (60*1000);
@@ -498,8 +497,7 @@ public class ElectricSignActivity extends Activity implements TextWatcher
 			}
 			else
 			{
-				// Do the download in a separate thread, to avoid visits from the ANR if the network is slow
-				//new DownloadFileTask().execute(getUrl());
+				_downloadErrorCount = 0;
 				getAlternateWebView().loadUrl(getUrl());
 			}
 		}
@@ -945,6 +943,6 @@ public class ElectricSignActivity extends Activity implements TextWatcher
     
 	private Button _goButton;
 	private int _selfStartCount = 15;
-	private int _downloadErrorCount = 0;
+	private int _downloadErrorCount = 1;  // 1 to avoid any chance of saving an image before download starts
 	private long _webViewDownloadErrorTimeStamps[] = new long[2];
 }
